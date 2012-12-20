@@ -63,14 +63,19 @@ class AnimationController(PubSub):
         self.last = len(self.reel.rects)
         self.frame_duration = 0
 
+        self.count = 0
+        self.repeats = 0
+
         self.time_since_last_frame_change = 0
         
-    def start(self, frame_duration):
+    def start(self, frame_duration, repeats = 0):
         self.current = 0
         self.frame_duration = frame_duration
         self.resume()
 
         self.time_since_last_frame_change = 0
+        self.count = 0
+        self.repeats = repeats
         self.emit('started')
 
     def stop(self):
@@ -81,7 +86,8 @@ class AnimationController(PubSub):
         self.active = True
 
     def update(self, elapsed):
-        if not self.active: return
+        if not self.active or self.count > self.repeats:
+            return
 
         if self.time_since_last_frame_change >= self.frame_duration:
             self.current = (self.current + 1) % self.last
@@ -90,7 +96,11 @@ class AnimationController(PubSub):
             self.time_since_last_frame_change = 0
 
             if self.current == (self.last - 1):
-                print finished
+                self.count += 1
+
+                if self.count > self.repeats:
+                    self.stop()
+                    self.emit('finished')
 
         self.time_since_last_frame_change += elapsed
 
@@ -100,7 +110,49 @@ class AnimationController(PubSub):
         return surface
             
 
+class AnimationSequence(PubSub):
+    def __init__(self, spritesheet):
+        self.spritesheet = spritesheet
+        
+        self.animation_controllers = []
+        self.start_args = {}
 
+        self.active = False
+        self.current = 0
+
+    def add_animation(self, name, duration, count):
+        self.animation_controllers.append(
+            AnimationController(self.spritesheet, name)
+        )
+        
+        self.start_args[name] = (duration, count)
+
+    def start(self):
+        if self.current != 0:
+            self.get_current_controller().stop()
+
+        self.current = 0
+        self.get_current_controller().start()
+
+        self.active = True
+
+    def update(self, elapsed):
+        if not self.active:
+            return
+        
+        self.get_current_controller().update(elapsed)
+
+        if not self.get_current_controller().active:
+            self.current = self.current + 1;
+
+            if self.current >= len(self.animation_controllers):
+                self.active = False
+                self.emit('finished')
+
+    def get_current_controller(self):
+        return self.animation_controllers[self.current]
+                       
+                                          
 class SpriteSheetView(PubSub):
     def __init__(self, spritesheet):
         PubSub.__init__(self)
@@ -108,7 +160,8 @@ class SpriteSheetView(PubSub):
         self.spritesheet = spritesheet
         self.spritesheet.on('reel added', self.handle_reel)
         self.position = (0, 0)
-
+        
+        self.animation_sequence = None
         self.animation_controllers = []
         self.update_hooked = False
 
@@ -120,16 +173,25 @@ class SpriteSheetView(PubSub):
     def render(self, engine, event, surface):
         self.hook_animation_loop(engine)
 
+        if self.animation_sequence:
+            self.render_controller(
+                self.animation_sequence.get_current_controller(),
+                surface
+            )
+
         for controller in self.animation_controllers:
-            if controller.active:
-                position = [self.position[x] + controller.position[x]
+            self.render_controller(controller, surface)
+
+    def render_controller(self, controller, surface):
+        if controller.active:
+            position = [self.position[x] + controller.position[x]
                             for x in xrange(len(self.position))]
 
-                c_surface = controller.get_current_surface()
-                surface.blit(c_surface, (position[0],
-                                         position[1],
-                                         c_surface.get_width(),
-                                         c_surface.get_height()))
+            c_surface = controller.get_current_surface()
+            surface.blit(c_surface, (position[0],
+                                     position[1],
+                                     c_surface.get_width(),
+                                     c_surface.get_height()))
             
 
     def hook_animation_loop(self, engine):
@@ -139,12 +201,15 @@ class SpriteSheetView(PubSub):
             
 
     def update(self, engine, event, elapsed):
+        if self.animation_sequence:
+            self.animation_sequence.update(elapsed)
+            
         for controller in self.animation_controllers:
             controller.update(elapsed)
 
 
-    def start_animation(self, name, duration):
-        return len([x.start(duration)
+    def start_animation(self, name, duration, repeats = 0):
+        return len([x.start(duration, repeats)
                     for x in self.animation_controllers
                         if x.name == name])
 
@@ -152,6 +217,9 @@ class SpriteSheetView(PubSub):
         return len([x.stop()
                     for x in self.animation_controllers
                         if x.name == name])
+
+    def get_animation_controller(self, name):
+        return [x for x in self.animation_controllers if x.name == name]
             
 if __name__ == '__main__':
     import os
@@ -179,7 +247,7 @@ if __name__ == '__main__':
         dead.load((0, 128), (64, 64), 7)
         sheet.add_reel('dead', dead)
 
-        view.start_animation('idle', 200)
+        view.start_animation('idle', 100, 3)
         engine.on('render', view.render)
 
         
