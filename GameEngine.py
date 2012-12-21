@@ -83,11 +83,11 @@ class Engine(PubSub):
             elapsed = self.clock.tick(self.fps)
 
     def _tick(self, elapsed):
-        self.emit('tick', elapsed)
+        self.emit('tick', [elapsed])
 
     def _render(self):
         self.screen.fill((0, 0, 0), (0, 0, self.width, self.height))
-        self.emit('render', self.screen)
+        self.emit('render', [self.screen])
         pygame.display.update()
 
     def _handle_stop(self):

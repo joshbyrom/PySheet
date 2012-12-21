@@ -112,28 +112,30 @@ class AnimationController(PubSub):
 
 class AnimationSequence(PubSub):
     def __init__(self, spritesheet):
+        PubSub.__init__(self)
+        
         self.spritesheet = spritesheet
         
         self.animation_controllers = []
-        self.start_args = {}
+        self.start_args = []
 
         self.active = False
         self.current = 0
 
     def add_animation(self, name, duration, count):
-        self.animation_controllers.append(
-            AnimationController(self.spritesheet, name)
-        )
+        controller = AnimationController(self.spritesheet, name)
+        controller.once('finished', self.handle_controller_finished)
         
-        self.start_args[name] = (duration, count)
+        self.animation_controllers.append(controller)
+        self.start_args.append((duration, count))
 
     def start(self):
         if self.current != 0:
             self.get_current_controller().stop()
 
-        self.current = 0
-        self.get_current_controller().start()
-
+        self.current = -1
+        self.next_animation()
+        
         self.active = True
 
     def update(self, elapsed):
@@ -142,12 +144,21 @@ class AnimationSequence(PubSub):
         
         self.get_current_controller().update(elapsed)
 
-        if not self.get_current_controller().active:
-            self.current = self.current + 1;
+    def handle_controller_finished(self, controller, event, *args):
+        self.emit('change')
+        self.next_animation()
 
-            if self.current >= len(self.animation_controllers):
-                self.active = False
-                self.emit('finished')
+    def next_animation(self):
+        self.current = self.current + 1
+
+        if self.current < len(self.animation_controllers):
+            controller = self.get_current_controller()
+            duration, count = self.start_args[self.current]
+            
+            controller.start(duration, count)
+        else:
+            self.active = False
+            self.emit('finished')
 
     def get_current_controller(self):
         return self.animation_controllers[self.current]
@@ -170,7 +181,8 @@ class SpriteSheetView(PubSub):
         controller = AnimationController(self.spritesheet, name)
         self.animation_controllers.append(controller)
         
-    def render(self, engine, event, surface):
+    def render(self, engine, event, args):
+        surface = args[0]
         self.hook_animation_loop(engine)
 
         if self.animation_sequence:
@@ -192,7 +204,16 @@ class SpriteSheetView(PubSub):
                                      position[1],
                                      c_surface.get_width(),
                                      c_surface.get_height()))
-            
+
+    def play_sequence(self, sequence):
+        self.animation_sequence = sequence
+        self.animation_sequence.once('finished', self.handle_sequence_finished)
+        
+        self.animation_sequence.start()
+
+    def handle_sequence_finished(self, emitter, event, *args):
+        self.animation_sequence = None
+        self.emit('sequence finished')
 
     def hook_animation_loop(self, engine):
         if not self.update_hooked:
@@ -200,7 +221,8 @@ class SpriteSheetView(PubSub):
             self.update_hooked = True
             
 
-    def update(self, engine, event, elapsed):
+    def update(self, engine, event, args):
+        elapsed = args[0]
         if self.animation_sequence:
             self.animation_sequence.update(elapsed)
             
@@ -247,7 +269,15 @@ if __name__ == '__main__':
         dead.load((0, 128), (64, 64), 7)
         sheet.add_reel('dead', dead)
 
-        view.start_animation('idle', 100, 3)
+        animation_sequence = AnimationSequence(sheet)
+        animation_sequence.add_animation('idle', 200, 3)
+        animation_sequence.add_animation('hurt', 100, 2)
+        animation_sequence.add_animation('idle', 50, 5)
+        animation_sequence.add_animation('attack', 50, 2)
+        animation_sequence.add_animation('hurt', 100, 2)
+        animation_sequence.add_animation('dead', 100, 0)
+
+        view.play_sequence(animation_sequence)
         engine.on('render', view.render)
 
         

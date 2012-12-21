@@ -1,0 +1,10 @@
+Introduction
+----------------
+
+A spritesheet loader and animation player / sequencer.
+
+
+Use
+----------------
+
+Main entry point to the application is SpriteSheet.py, which has a small example using art from OpenArt.com
