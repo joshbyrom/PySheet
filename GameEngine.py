@@ -115,8 +115,8 @@ class Engine(PubSub):
         
 if __name__ == '__main__':
     def render_fun():
-        def closure(engine, *args):
-            event, surface = args
+        def closure(engine, event, args):
+            surface = args[0]
 
             surface.fill((0,0,0), (0,0,surface.get_width(), surface.get_height()))
 
@@ -131,14 +131,14 @@ if __name__ == '__main__':
 
     caption = 'Hello, World'
     def caption_fun(s):
-        def closure(engine, *args):
-            result = s + ' [' + args[0] + ': ' + args[1] + ']'
+        def closure(engine, event, args):
+            result = s + ' [' + args[0]+ ']'
             engine.set_caption(result)
 
         return closure
 
     def caption_idle_fun(s):
-        def closure(engine, *args):
+        def closure(engine, event, args):
             engine.set_caption(s)
         return closure
     
