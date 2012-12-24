@@ -81,6 +81,7 @@ class Engine(PubSub):
             self._render()
             self._handle_pygame_events()
             elapsed = self.clock.tick(self.fps)
+            self.frame_count = self.frame_count + 1
 
     def _tick(self, elapsed):
         self.emit('tick', [elapsed])
